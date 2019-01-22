@@ -10,25 +10,6 @@ import IPython.display as ipd
 import random
 import heapq
 
-
-'''
-def ssd(IMG, x1, y1, x2, y2, patch):
-    tx = int(patch[0]/2)
-    ty = int(patch[1]/2)
-    ssd = 0
-    #print(range(-tx, tx), " ", range(-ty, ty))
-    for i in range(-tx, tx):
-        for j in range(-ty, ty):
-            tx1 = x1 + i
-            ty1 = y1 + j
-            tx2 = x2 + i
-            ty2 = y2 + j
-            if (tx1 > 0 and tx1 < IMG.shape[0] and tx2 > 0 and tx2 < IMG.shape[0]
-               and ty1 > 0 and ty1 < IMG.shape[1] and ty2 > 0 and ty2 < IMG.shape[1]):
-                ssd = ssd + (IMG[tx1][ty1] - IMG[tx2][ty2])**2
-    return ssd
-'''
-
 def ssd(patchA, patchB):
     #dist2 = np.abs(patchA - patchB)
     #dist2 = 100*np.linalg.norm(patchA - patchB)**2/np.linalg.norm(patchB)**2
@@ -51,7 +32,7 @@ def index1dto2d(idx, n, psize):
 # converte indice de coordenadas para o indice no conjunto de patches
 def index2dto1d(x, y, n, psize):
     tamanho_linha = n - (psize - 1)
-    return y*tamanho_linha + x
+    return int (y*tamanho_linha + x)
 
 def reorganizePatches(NNF_heaps, patches, num_patches):
     newpatches = []
@@ -90,39 +71,43 @@ def getNeighbors(U, V, offset, m, n, psize):
             listNeighbors.append([U + off, V + off])
     return listNeighbors
 
-def buildMask(maskIdx, m, n, psize):
+def getNeighborsSingle(U, offset, m, n, psize):
+    listNeighbors = []
+    listoffsets = []
+    for a in np.arange(offset):
+        a = a + 1
+        listoffsets.append([0,-a])
+        listoffsets.append([-a, 0])
+        listoffsets.append([-a, -a])
+        listoffsets.append([0, a])
+        listoffsets.append([a, 0])
+        listoffsets.append([a, a])
+        listoffsets.append([-a, a])
+        listoffsets.append([a, -a])
+
+    listNeighbors.append([U])
+
+    for off in listoffsets:
+        if ((U[0] + off[0]) >= 0 and (U[0] + off[0]) < (n-psize-1) 
+            and (U[1] + off[1]) >= 0 and (U[1] + off[1]) < (m-psize-1)):
+            listNeighbors.append([U + off])
+    return listNeighbors
+
+def buildMask(maskIdxPair, m, n, psize):
     maskM = np.zeros((m,n))
-    for x, y in maskIdx:
+    for U, V in maskIdxPair:
         for ui in np.arange(psize):
             for uj in np.arange(psize):
-                maskM[y + ui][x + uj] = 1
+                maskM[U[1] + ui][U[0] + uj] = 1
+                maskM[V[1] + ui][V[0] + uj] = 1 
     return maskM
 
 
-"""
-# marca os patches U e V no mapa de detecção
-def markPatches(U, V, detec_map, psize, counter):
-    print(U, " ", V)
-    u_x1 = U[0]
-    u_x2 = U[0] + psize
-    u_y1 = U[0]
-    u_y2 = U[1] + psize
 
-    v_x1 = V[0]
-    v_x2 = V[0] + psize
-    v_y1 = V[0]
-    v_y2 = V[1] + psize
+IMG = rgb2gray(imread('inputs/001_F.png'))
 
-    
-    counter = counter + 2
-    #detec_map[u_x1][u_y1] = 0
-    #detec_map[v_x1][v_y1] = 0
-    return detec_map, counter
-"""
-#IMG = rgb2gray(imread('005_Fnew.png'))
-IMG = rgb2gray(imread('inputs/005_Fnew.png'))
-#plt.imshow(IMG, cmap='gray')
-#plt.show()
+plt.imshow(IMG, cmap='gray')
+plt.show()
 
 print(IMG.shape)
 
@@ -173,7 +158,7 @@ print(patches.shape)
 print(len(NNF_heaps))
 #print(NNF_heaps[0])
 
-num_iters = 3
+num_iters = 5
 
 for iter in range(num_iters):
     
@@ -269,24 +254,25 @@ for iter in range(num_iters):
 
             searchradius = w*(alpha**i)
 
-            while (searchradius < 1):
+            while (searchradius > 1):
                 [v_x,v_y] = index1dto2d(item[1], n, psize)
 
-                progress = True
+                progress = False
 
-                while (progress):
-                    progress = False
+                while (not progress):
                     u_x = v_x + searchradius*random.randint(-1,1)
-                    if (u_x >= 0 and u_x < (m-psize-1)):
+                    if (u_x >= 0 and u_x < (n-psize-1)):
                         progress = True
 
-                while (progress):
-                    progress = False
+                progress = False
+
+                while (not progress):
                     u_y = v_y + searchradius*random.randint(-1,1)
-                    if (u_y >= 0 and u_y < (n-psize-1)):
+                    if (u_y >= 0 and u_y < (m-psize-1)):
                         progress = True
 
                 v_index1d = index2dto1d(u_x, u_y, n, psize)
+                # print("j ", j, " v_index1d ", v_index1d)
                 tempdist = -1*ssd(patches[j], patches[v_index1d])
                 if (tempdist > melhorCorresp[0]):
                     melhorCorresp = [tempdist, v_index1d]
@@ -377,6 +363,8 @@ for iter in range(num_iters):
 
     print("Enriquecimento direto feito! [", iter, "]")
 
+# Reconstrução aproximada da imagem tomando média dos overlaps
+
 newpatches = reorganizePatches(NNF_heaps, patches, num_patches)
 NEWIMG = image.reconstruct_from_patches_2d(np.array(newpatches), IMG.shape).astype(np.uint8)
 
@@ -390,91 +378,42 @@ print("Distorção: ", (np.linalg.norm(IMG - NEWIMG)**2/np.linalg.norm(IMG)**2)*
 
 T = 20 # distância euclidiana limite entre patches
 D = 100 # distância de similaridade limite
-offset = psize # distância de procura ao redor do patch alvo
+offset = 2 # distância de procura ao redor do patch alvo
 
 detec_map = np.zeros(IMG.shape)
 detec_list = []
 detec_list_idx = []
 # u patch atual, v patch a ser testado
-counter = 0
+# counter = 0
 
+# percorre NNF final da esquerda para a direita de cima para baixo
 for i in range(num_patches):
-    u = index1dto2d(i, n, psize) # devolve coordenadas castesianas comuns!
-    test_u = index2dto1d(u[0], u[1], n, psize)
-    if (i != test_u):
-        print("Erro! i: ", i, " u: ", u, " test_u: ", test_u)
+    u = index1dto2d(i, n, psize)
 
-
-q = queue.Queue()
-
-for i in range(num_patches):
-    q.put(i)
-
-while (not q.empty()):
-    i = q.get()
-    u = index1dto2d(i, n, psize) # devolve coordenadas castesianas comuns!
-    test_u = index2dto1d(u[0], u[1], n, psize)
-    if (i != test_u):
-        print("Erro! i: ", i, " u: ", u, " test_u: ", test_u)
-
-    #if (detec_map[u[1]][u[0]] == 1):
-    #    continue
-
+    # visitamos o maxheap de cada patch
     for item in NNF_heaps[i]:
         v = index1dto2d(item[1], n, psize)
 
-        #if (detec_map[v[1]][v[0]] == 1):
-        #    continue
-        u = np.asarray(u)
-        v = np.asarray(v)
         dist = np.linalg.norm(np.asarray(u)-np.asarray(v))
         if (dist > T):
             valid_neighbors = getNeighbors(u, v, offset, m, n, psize)
             for neighbor in valid_neighbors:
-                nindex1dU = index2dto1d(neighbor[0][0], neighbor[0][1], n, psize)
-                nindex1dV = index2dto1d(neighbor[1][0], neighbor[1][1], n, psize)
+                nindex1dU = index2dto1d(neighbor[0][0], neighbor[0][1], n, psize) # vizinho do patch
+                nindex1dV = index2dto1d(neighbor[1][0], neighbor[1][1], n, psize) # vizinho da correspondencia
 
-                if (detec_map[neighbor[0][1]][neighbor[0][0]] == 1 and detec_map[neighbor[1][1]][neighbor[1][0]] == 1):
-                    continue
+                # if (detec_map[neighbor[0][1]][neighbor[0][0]] == 1 and detec_map[neighbor[1][1]][neighbor[1][0]] == 1):
+                #    continue
 
                 distSSD = ssd(patches[nindex1dU], patches[nindex1dV])
                 if (distSSD < D):
-                    q.put(nindex1dU)
-                    q.put(nindex1dV)
-                    detec_list.append(nindex1dU)
-                    detec_list.append(nindex1dV)
-                    #print("opa!", i, " e ", nindex1d)
                     u_x1, u_y1 = index1dto2d(nindex1dU, n, psize)
                     v_x1, v_y1 = index1dto2d(nindex1dV, n, psize)
 
+                    detec_list_idx.append([[u_x1, u_y1], [v_x1, v_y1]]) # adicionando no mapa de deteccao
 
-                    detec_list_idx.append(u)
-                    detec_list_idx.append((v_x1, v_y1))
-
-                    for ui in np.arange(psize):
-                        for uj in np.arange(psize):
-                            counter = counter + 1
-                            detec_map[u_y1 + ui][u_x1 + uj] = 1
-
-
-                    for vi in np.arange(psize):
-                        for vj in np.arange(psize):
-                            counter = counter + 1
-                            detec_map[v_y1 + vi][v_x1 + vj] = 1
-#detec_map = np.transpose(detec_map*255)
-print(counter)
-#plt.imshow(detec_map, cmap='gray')
-#plt.show()
-
-for i in range(num_patches):
-    patches[i] = patches[i]*0
-
-for item in detec_list:
-    patches[item] = np.ones(patches[item].shape)*255
-
-#NNEWIMG = image.reconstruct_from_patches_2d(np.array(patches), IMG.shape).astype(np.uint8)*255
 NNEWIMG = buildMask(detec_list_idx, m, n, psize)
 #print(detec_map)
 plt.imshow(NNEWIMG, cmap='gray')
 plt.show()
+
 
